@@ -50,30 +50,26 @@ export default function Home() {
     try {
       const processed: ProcessedFile[] = []
 
+      // Import PDF processing components dynamically
+      const { default: PDFProcessor } = await import('./utils/pdfProcessor')
+      
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
         setProgress((i / files.length) * 100)
 
-        const formData = new FormData()
-        formData.append('pdf', file)
-
-        const response = await fetch('/api/invert-pdf', {
-          method: 'POST',
-          body: formData,
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to process ${file.name}`)
+        try {
+          const invertedBlob = await PDFProcessor.invertPDF(file)
+          const baseName = file.name.replace('.pdf', '')
+          
+          processed.push({
+            name: `${baseName}_inverted.pdf`,
+            data: invertedBlob,
+            originalName: file.name
+          })
+        } catch (fileError) {
+          console.error(`Failed to process ${file.name}:`, fileError)
+          // Continue with other files
         }
-
-        const blob = await response.blob()
-        const baseName = file.name.replace('.pdf', '')
-        
-        processed.push({
-          name: `${baseName}_inverted.pdf`,
-          data: blob,
-          originalName: file.name
-        })
       }
 
       setProcessedFiles(processed)
