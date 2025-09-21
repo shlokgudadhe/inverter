@@ -130,10 +130,10 @@ export default function Home() {
       {/* Header */}
       <div className="text-center mb-8">
         <h1 className="text-4xl font-bold text-primary mb-4">
-          🖨️ PDF Color Inverter
+          🖨️ Kya be Dumsu?
         </h1>
         <p className="text-xl text-secondary">
-          Save ink by inverting PDF colors for printing
+          PDF Color Inverter for Sayee
         </p>
       </div>
 
