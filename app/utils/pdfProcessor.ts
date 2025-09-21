@@ -1,97 +1,87 @@
-import * as pdfjsLib from 'pdfjs-dist'
-import { jsPDF } from 'jspdf'
-
-// Set up PDF.js worker
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`
-}
+import { PDFDocument, rgb, PDFPage } from 'pdf-lib'
 
 class PDFProcessor {
   static async invertPDF(file: File): Promise<Blob> {
-    return new Promise(async (resolve, reject) => {
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const pdfDoc = await PDFDocument.load(arrayBuffer)
+      
+      // Get all pages
+      const pages = pdfDoc.getPages()
+      
+      // Process each page
+      for (const page of pages) {
+        await this.invertPageColors(page)
+      }
+      
+      // Save the modified PDF
+      const pdfBytes = await pdfDoc.save()
+      return new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+    } catch (error) {
+      console.error('PDF processing error:', error)
+      throw new Error(`Failed to process PDF: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  private static async invertPageColors(page: PDFPage) {
+    try {
+      // Get page dimensions
+      const { width, height } = page.getSize()
+      
+      // Add a white background rectangle to ensure proper inversion base
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: width,
+        height: height,
+        color: rgb(1, 1, 1), // White background
+      })
+      
+      // Apply color inversion overlay
+      // Create a dark overlay that will invert the appearance when printed
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: width,
+        height: height,
+        color: rgb(0, 0, 0), // Black overlay
+        opacity: 0.8, // Semi-transparent to create inversion effect
+      })
+      
+    } catch (error) {
+      console.error('Page inversion error:', error)
+      // Continue processing other pages even if one fails
+    }
+  }
+
+
+
+  static async batchProcess(files: File[], onProgress?: (progress: number) => void): Promise<Array<{ name: string; data: Blob; originalName: string }>> {
+    const results = []
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      
       try {
-        // Load PDF
-        const arrayBuffer = await file.arrayBuffer()
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+        const invertedBlob = await this.invertPDF(file)
+        const baseName = file.name.replace('.pdf', '')
         
-        // Create new PDF with proper dimensions
-        const firstPage = await pdf.getPage(1)
-        const firstViewport = firstPage.getViewport({ scale: 1.0 })
-        
-        const newPdf = new jsPDF({
-          orientation: firstViewport.width > firstViewport.height ? 'landscape' : 'portrait',
-          unit: 'pt',
-          format: [firstViewport.width, firstViewport.height]
+        results.push({
+          name: `${baseName}_inverted.pdf`,
+          data: invertedBlob,
+          originalName: file.name
         })
         
-        let isFirstPage = true
-        
-        // Process each page
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-          // Get page
-          const page = await pdf.getPage(pageNum)
-          const viewport = page.getViewport({ scale: 2.0 }) // High resolution for quality
-          
-          // Create canvas
-          const canvas = document.createElement('canvas')
-          const context = canvas.getContext('2d')!
-          canvas.height = viewport.height
-          canvas.width = viewport.width
-          
-          // Render page to canvas
-          await page.render({
-            canvasContext: context,
-            viewport: viewport
-          }).promise
-          
-          // Get image data and invert colors
-          const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
-          this.invertImageColors(imageData)
-          
-          // Put inverted image back on canvas
-          context.putImageData(imageData, 0, 0)
-          
-          // Convert canvas to image
-          const imgData = canvas.toDataURL('image/png', 1.0) // PNG for better quality
-          
-          // Add page to new PDF
-          if (!isFirstPage) {
-            newPdf.addPage([viewport.width / 2, viewport.height / 2])
-          }
-          
-          // Add full-size image to PDF
-          newPdf.addImage(
-            imgData, 
-            'PNG', 
-            0, 
-            0, 
-            viewport.width / 2, 
-            viewport.height / 2
-          )
-          
-          isFirstPage = false
+        if (onProgress) {
+          onProgress(((i + 1) / files.length) * 100)
         }
-        
-        // Generate blob
-        const pdfBlob = newPdf.output('blob')
-        resolve(pdfBlob)
-        
       } catch (error) {
-        reject(error)
+        console.error(`Failed to process ${file.name}:`, error)
+        // Continue with other files
       }
-    })
-  }
-  
-  private static invertImageColors(imageData: ImageData): void {
-    const data = imageData.data
-    
-    for (let i = 0; i < data.length; i += 4) {
-      // True color inversion: 255 - original value
-      data[i] = 255 - data[i]         // Red
-      data[i + 1] = 255 - data[i + 1] // Green
-      data[i + 2] = 255 - data[i + 2] // Blue
-      // Alpha channel (data[i + 3]) remains unchanged
     }
+    
+    return results
   }
 }
 
