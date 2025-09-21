@@ -133,7 +133,7 @@ export default function Home() {
           🖨️ PDF Color Inverter
         </h1>
         <p className="text-xl text-secondary">
-          Save ink by inverting PDF colors for printing
+          for Sayee Navachi Ek Porgi
         </p>
       </div>
 
