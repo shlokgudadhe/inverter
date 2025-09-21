@@ -58,8 +58,11 @@ export async function POST(request: NextRequest) {
     // Save the new PDF
     const invertedPdfBytes = await newPdfDoc.save()
     
+    // Convert Uint8Array to Buffer for NextResponse
+    const buffer = Buffer.from(invertedPdfBytes)
+    
     // Return the processed PDF
-    return new NextResponse(invertedPdfBytes, {
+    return new NextResponse(buffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
