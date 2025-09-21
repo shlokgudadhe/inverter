@@ -20,47 +20,40 @@ export async function POST(request: NextRequest) {
     // Create a new PDF document for the inverted version
     const newPdfDoc = await PDFDocument.create()
     
-    // Process each page
-    for (let i = 0; i < pages.length; i++) {
-      const page = pages[i]
-      const { width, height } = page.getSize()
+    // Copy all pages and apply inversion effect
+    const pageIndices = Array.from({ length: pages.length }, (_, i) => i)
+    const copiedPages = await newPdfDoc.copyPages(pdfDoc, pageIndices)
+    
+    // Add each copied page with inversion overlays
+    copiedPages.forEach((copiedPage) => {
+      // Add the copied page to the new document
+      newPdfDoc.addPage(copiedPage)
       
-      // Create a new page with the same dimensions
-      const newPage = newPdfDoc.addPage([width, height])
+      // Get the page we just added to apply overlays
+      const addedPages = newPdfDoc.getPages()
+      const currentPage = addedPages[addedPages.length - 1]
+      const { width, height } = currentPage.getSize()
       
-      // Fill the page with white background (inverted from potential black)
-      newPage.drawRectangle({
+      // Apply white overlay to simulate color inversion (saves ink)
+      currentPage.drawRectangle({
         x: 0,
         y: 0,
         width: width,
         height: height,
-        color: rgb(1, 1, 1), // White background
+        color: rgb(1, 1, 1), // White
+        opacity: 0.5, // Semi-transparent for inversion effect
       })
       
-      // Copy the original page content
-      const copiedPages = await newPdfDoc.copyPages(pdfDoc, [i])
-      const [copiedPage] = copiedPages
-      
-      // Draw the copied page with blend mode that simulates inversion
-      // This creates a basic inversion effect by overlaying on white background
-      newPage.drawPage(copiedPage, {
+      // Add a second lighter overlay for better ink saving
+      currentPage.drawRectangle({
         x: 0,
         y: 0,
         width: width,
         height: height,
-        opacity: 1,
+        color: rgb(0.95, 0.95, 0.95), // Very light gray
+        opacity: 0.3,
       })
-      
-      // Add a semi-transparent white overlay to lighten dark areas
-      newPage.drawRectangle({
-        x: 0,
-        y: 0,
-        width: width,
-        height: height,
-        color: rgb(1, 1, 1),
-        opacity: 0.3, // Adjust this to control inversion strength
-      })
-    }
+    })
     
     // Save the new PDF
     const invertedPdfBytes = await newPdfDoc.save()
