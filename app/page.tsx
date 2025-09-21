@@ -9,15 +9,32 @@ interface ProcessedFile {
   originalName: string
 }
 
+interface FileStatus {
+  name: string
+  status: 'pending' | 'processing' | 'completed' | 'error'
+  error?: string
+}
+
 export default function Home() {
   const [files, setFiles] = useState<File[]>([])
   const [processing, setProcessing] = useState(false)
   const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([])
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [resolution, setResolution] = useState(150)
+  const [quality, setQuality] = useState(0.8)
+  const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || [])
+    const selectedFiles = Array.from(e.target.files || []).filter(
+      file => file.type === 'application/pdf'
+    )
+    
+    if (selectedFiles.length === 0) {
+      setError('Please select valid PDF files only')
+      return
+    }
+    
     setFiles(prev => [...prev, ...selectedFiles])
     setError(null)
   }
@@ -39,6 +56,13 @@ export default function Home() {
     setFiles(prev => prev.filter((_, i) => i !== index))
   }
 
+  const clearAllFiles = () => {
+    setFiles([])
+    setProcessedFiles([])
+    setError(null)
+    setProgress(0)
+  }
+
   const processFiles = async () => {
     if (files.length === 0) return
 
@@ -53,24 +77,15 @@ export default function Home() {
       // Import PDF processing components dynamically
       const { default: PDFProcessor } = await import('./utils/pdfProcessor')
       
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        setProgress((i / files.length) * 100)
-
-        try {
-          const invertedBlob = await PDFProcessor.invertPDF(file)
-          const baseName = file.name.replace('.pdf', '')
-          
-          processed.push({
-            name: `${baseName}_inverted.pdf`,
-            data: invertedBlob,
-            originalName: file.name
-          })
-        } catch (fileError) {
-          console.error(`Failed to process ${file.name}:`, fileError)
-          // Continue with other files
+      const results = await PDFProcessor.processMultiplePDFs(
+        files,
+        { resolution, quality },
+        (current, total) => {
+          setProgress((current / total) * 100)
         }
-      }
+      )
+      
+      processed.push(...results)
 
       setProcessedFiles(processed)
       setProgress(100)
@@ -169,7 +184,15 @@ export default function Home() {
         {/* File List */}
         {files.length > 0 && (
           <div className="mt-6">
-            <h3 className="font-semibold mb-3">Selected Files ({files.length})</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold">Selected Files ({files.length})</h3>
+              <button
+                onClick={clearAllFiles}
+                className="text-red-500 hover:text-red-700 text-sm"
+              >
+                Clear All
+              </button>
+            </div>
             <div className="space-y-2">
               {files.map((file, index) => (
                 <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded">
@@ -194,6 +217,43 @@ export default function Home() {
           </div>
         )}
 
+        {/* Processing Options */}
+        {files.length > 0 && (
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-semibold mb-3">⚙️ Processing Options</h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Resolution (DPI)
+                </label>
+                <select
+                  value={resolution}
+                  onChange={(e) => setResolution(Number(e.target.value))}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value={72}>72 DPI (Fast, Lower Quality)</option>
+                  <option value={150}>150 DPI (Balanced)</option>
+                  <option value={300}>300 DPI (High Quality, Slower)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Image Quality
+                </label>
+                <select
+                  value={quality}
+                  onChange={(e) => setQuality(Number(e.target.value))}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value={0.6}>60% (Smaller Files)</option>
+                  <option value={0.8}>80% (Balanced)</option>
+                  <option value={1.0}>100% (Best Quality)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Process Button */}
         {files.length > 0 && (
           <div className="mt-6">
@@ -202,7 +262,7 @@ export default function Home() {
               disabled={processing}
               className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {processing ? '🔄 Processing...' : '🔄 Invert Colors & Process'}
+              {processing ? '🔄 Processing...' : `🔄 Process ${files.length} PDF${files.length > 1 ? 's' : ''}`}
             </button>
           </div>
         )}
@@ -217,7 +277,10 @@ export default function Home() {
               ></div>
             </div>
             <p className="text-sm text-gray-600 mt-2">
-              Processing... {Math.round(progress)}%
+              Processing {files.length} PDF{files.length > 1 ? 's' : ''}... {Math.round(progress)}%
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              This may take a few moments for large files or high resolution settings
             </p>
           </div>
         )}
